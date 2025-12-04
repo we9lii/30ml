@@ -238,6 +238,25 @@ async function ensureSchema() {
     } catch (e) {
       console.log(' Skipping quotation_items column check due to error:', e.message);
     }
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS calendar_events (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        location VARCHAR(255),
+        start_datetime DATETIME NOT NULL,
+        end_datetime DATETIME NULL,
+        all_day TINYINT(1) DEFAULT 0,
+        status VARCHAR(32) DEFAULT 'SCHEDULED',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX(user_id),
+        INDEX(start_datetime),
+        INDEX(end_datetime)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    console.log(' Ensured table calendar_events exists');
   } catch (err) {
     console.error(' Schema check/add failed:', err.message);
   }
