@@ -94,62 +94,7 @@ const safeJsonParse = (data, defaultValue) => {
     return defaultValue;
 };
 
-// GET /api/workflow-requests
-router.get('/workflow-requests', async (req, res) => {
-    try {
-        const query = `
-            SELECT w.*, u.username as employee_id_username
-            FROM workflow_requests w
-            LEFT JOIN users u ON w.user_id = u.id
-            ORDER BY w.creation_date DESC
-        `;
-        const [rows] = await db.query(query);
 
-        const requests = rows.map(req => ({
-            id: req.id,
-            title: req.title || 'N/A',
-            description: req.description || '',
-            type: req.type || 'استيراد',
-            priority: req.priority || 'منخفضة',
-            currentStageId: req.current_stage_id || 1,
-            creationDate: req.creation_date ? new Date(req.creation_date).toISOString() : new Date().toISOString(),
-            lastModified: req.last_modified ? new Date(req.last_modified).toISOString() : new Date().toISOString(),
-            stageHistory: safeJsonParse(req.stage_history, []),
-
-            // Extract employeeId based on the request type (POST or PUT with multipart/form-data)
-            if(req.body.reportData) { // From a regular report update
-            const reportData = JSON.parse(req.body.reportData);
-            employeeId = reportData.employeeId;
-        } else if (req.body.requestData) { // From a workflow update
-            const requestData = JSON.parse(req.body.requestData);
-            employeeId = requestData.employeeId;
-        } else { // From a workflow creation or DELETE
-            employeeId = req.body.employeeId;
-        }
-
-        if (!employeeId) {
-            return res.status(401).json({ message: 'Unauthorized: User ID is missing.' });
-        }
-
-        const [userRows] = await db.query('SELECT role, has_import_export_permission FROM users WHERE username = ?', [employeeId]);
-
-        if (userRows.length === 0) {
-            return res.status(404).json({ message: 'User not found.' });
-        }
-
-        const user = userRows[0];
-
-        // Allow access if the user is an Admin or has the specific permission
-        if (user.role === 'admin' || user.has_import_export_permission) {
-            next();
-        } else {
-            return res.status(403).json({ message: 'Access Denied: You do not have permission for this operation.' });
-        }
-    } catch (error) {
-        console.error('Permission check error:', error);
-        res.status(500).json({ message: 'An internal server error occurred during permission check.' });
-    }
-};
 
 
 // Helper to upload a file to Cloudinary
