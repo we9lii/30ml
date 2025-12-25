@@ -97,49 +97,7 @@ const safeJsonParse = (data, defaultValue) => {
 
 
 
-// Helper to upload a file to Cloudinary
-const uploadFileToCloudinary = (file, employeeId) => {
-    return new Promise((resolve, reject) => {
-        const publicId = file.originalname.split('.').slice(0, -1).join('.').trim();
-        const uploadStream = cloudinary.uploader.upload_stream(
-            {
-                folder: `qssun_reports / workflows / ${employeeId}`,
-                public_id: publicId,
-                resource_type: 'auto'
-            },
-            (error, result) => {
-                if (error) {
-                    return reject(error);
-                }
-                if (result) {
-                    resolve({ url: result.secure_url, fileName: file.originalname });
-                } else {
-                    reject(new Error("Cloudinary upload failed without an error object."));
-                }
-            }
-        );
-        streamifier.createReadStream(file.buffer).pipe(uploadStream);
-    });
-};
 
-// Helper to safely parse JSON - CORRECTED VERSION
-const safeJsonParse = (data, defaultValue) => {
-    // If it's already a parsed object/array (from DB driver), return it directly.
-    if (typeof data === 'object' && data !== null) {
-        return data;
-    }
-    // If it's a string, try to parse it.
-    if (typeof data === 'string') {
-        try {
-            return JSON.parse(data);
-        } catch (e) {
-            console.error("Failed to parse JSON string:", e);
-            return defaultValue;
-        }
-    }
-    // For all other types (null, undefined, etc.), return the default.
-    return defaultValue;
-};
 
 // GET /api/workflow-requests
 router.get('/workflow-requests', async (req, res) => {
