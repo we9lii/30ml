@@ -13,14 +13,14 @@ const upload = multer({ storage: storage });
 const checkImportExportPermission = async (req, res, next) => {
     try {
         let employeeId;
-        
+
         // Extract employeeId based on the request type (POST or PUT with multipart/form-data)
         if (req.body.reportData) { // From a regular report update
-             const reportData = JSON.parse(req.body.reportData);
-             employeeId = reportData.employeeId;
+            const reportData = JSON.parse(req.body.reportData);
+            employeeId = reportData.employeeId;
         } else if (req.body.requestData) { // From a workflow update
-             const requestData = JSON.parse(req.body.requestData);
-             employeeId = requestData.employeeId;
+            const requestData = JSON.parse(req.body.requestData);
+            employeeId = requestData.employeeId;
         } else { // From a workflow creation or DELETE
             employeeId = req.body.employeeId;
         }
@@ -36,7 +36,7 @@ const checkImportExportPermission = async (req, res, next) => {
         }
 
         const user = userRows[0];
-        
+
         // Allow access if the user is an Admin or has the specific permission
         if (user.role === 'admin' || user.has_import_export_permission) {
             next();
@@ -112,6 +112,121 @@ router.get('/workflow-requests', async (req, res) => {
             type: req.type || 'استيراد',
             priority: req.priority || 'منخفضة',
             currentStageId: req.current_stage_id || 1,
+```javascript
+const express = require('express');
+const router = express.Router();
+const db = require('../db.js');
+const multer = require('multer');
+const { cloudinary } = require('../cloudinary.js');
+const streamifier = require('streamifier');
+
+// Setup multer for memory storage
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
+// Security Middleware to check for Import/Export permission
+const checkImportExportPermission = async (req, res, next) => {
+    try {
+        let employeeId;
+        
+        // Extract employeeId based on the request type (POST or PUT with multipart/form-data)
+        if (req.body.reportData) { // From a regular report update
+             const reportData = JSON.parse(req.body.reportData);
+             employeeId = reportData.employeeId;
+        } else if (req.body.requestData) { // From a workflow update
+             const requestData = JSON.parse(req.body.requestData);
+             employeeId = requestData.employeeId;
+        } else { // From a workflow creation or DELETE
+            employeeId = req.body.employeeId;
+        }
+
+        if (!employeeId) {
+            return res.status(401).json({ message: 'Unauthorized: User ID is missing.' });
+        }
+
+        const [userRows] = await db.query('SELECT role, has_import_export_permission FROM users WHERE username = ?', [employeeId]);
+
+        if (userRows.length === 0) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        const user = userRows[0];
+        
+        // Allow access if the user is an Admin or has the specific permission
+        if (user.role === 'admin' || user.has_import_export_permission) {
+            next();
+        } else {
+            return res.status(403).json({ message: 'Access Denied: You do not have permission for this operation.' });
+        }
+    } catch (error) {
+        console.error('Permission check error:', error);
+        res.status(500).json({ message: 'An internal server error occurred during permission check.' });
+    }
+};
+
+
+// Helper to upload a file to Cloudinary
+const uploadFileToCloudinary = (file, employeeId) => {
+    return new Promise((resolve, reject) => {
+        const publicId = file.originalname.split('.').slice(0, -1).join('.').trim();
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder: `qssun_reports / workflows / ${ employeeId }`,
+                public_id: publicId,
+                resource_type: 'auto'
+            },
+            (error, result) => {
+                if (error) {
+                    return reject(error);
+                }
+                if (result) {
+                    resolve({ url: result.secure_url, fileName: file.originalname });
+                } else {
+                    reject(new Error("Cloudinary upload failed without an error object."));
+                }
+            }
+        );
+        streamifier.createReadStream(file.buffer).pipe(uploadStream);
+    });
+};
+
+// Helper to safely parse JSON - CORRECTED VERSION
+const safeJsonParse = (data, defaultValue) => {
+    // If it's already a parsed object/array (from DB driver), return it directly.
+    if (typeof data === 'object' && data !== null) {
+        return data;
+    }
+    // If it's a string, try to parse it.
+    if (typeof data === 'string') {
+        try {
+            return JSON.parse(data);
+        } catch (e) {
+            console.error("Failed to parse JSON string:", e);
+            return defaultValue;
+        }
+    }
+    // For all other types (null, undefined, etc.), return the default.
+    return defaultValue;
+};
+
+// GET /api/workflow-requests
+router.get('/workflow-requests', async (req, res) => {
+    try {
+        const query = `
+            SELECT w.*, u.username as employee_id_username
+            FROM workflow_requests w
+            LEFT JOIN users u ON w.user_id = u.id
+            ORDER BY w.creation_date DESC
+            `;
+        const [rows] = await db.query(query);
+
+        const requests = rows.map(req => ({
+            id: req.id,
+            title: req.title || 'N/A',
+            description: req.description || '',
+            type: req.type || 'استيراد',
+            priority: req.priority || 'منخفضة',
+            currentStageId: req.current_stage_id || 1,
             creationDate: req.creation_date ? new Date(req.creation_date).toISOString() : new Date().toISOString(),
             lastModified: req.last_modified ? new Date(req.last_modified).toISOString() : new Date().toISOString(),
             stageHistory: safeJsonParse(req.stage_history, []),
@@ -120,6 +235,8 @@ router.get('/workflow-requests', async (req, res) => {
             containerCount40ft: req.container_count_40ft,
             expectedDepartureDate: req.expected_departure_date,
             departurePort: req.departure_port,
+            blNumber: req.bl_number || null,
+            blDate: req.bl_date || null,
         }));
         res.json(requests);
     } catch (error) {
@@ -130,24 +247,46 @@ router.get('/workflow-requests', async (req, res) => {
 
 // POST /api/workflow-requests - Create a new request
 router.post('/workflow-requests', checkImportExportPermission, async (req, res) => {
-    const { title, description, type, priority, employeeId, stageHistory } = req.body;
+    const { title, description, type, priority, employeeId, stageHistory, blNumber, blDate } = req.body;
     try {
         const [userRows] = await db.query('SELECT id FROM users WHERE username = ?', [employeeId]);
         if (userRows.length === 0) return res.status(404).json({ message: 'User not found.' });
         
         const userId = userRows[0].id;
 
+        // LOGIC FOR SEQUENTIAL ID GENERATION (Qssun-XXXX)
+        let nextId = 'Qssun-0001';
+        try {
+            const [rows] = await db.query("SELECT id FROM workflow_requests WHERE id LIKE 'Qssun-%' ORDER BY id DESC LIMIT 1");
+            if (rows.length > 0) {
+                const lastId = rows[0].id;
+                const parts = lastId.split('-');
+                if (parts.length === 2) {
+                    const lastNum = parseInt(parts[1], 10);
+                    if (!isNaN(lastNum)) {
+                        nextId = `Qssun - ${ String(lastNum + 1).padStart(4, '0')
+    }`;
+                    }
+                }
+            }
+        } catch (idError) {
+            console.error('Error generating new ID, falling back to timestamp:', idError);
+            nextId = `Qssun - ${ Date.now().toString().slice(-4) } `;
+        }
+
         const newRequest = {
-            id: `REQ-${Date.now().toString().slice(-4)}`,
+            id: nextId,
             user_id: userId,
             title, description, type, priority,
+            bl_number: blNumber || null,
+            bl_date: blDate || null,
             current_stage_id: 1,
             stage_history: JSON.stringify(stageHistory),
         };
 
         await db.query('INSERT INTO workflow_requests SET ?', newRequest);
         
-        const [rows] = await db.query(`SELECT w.*, u.username as employee_id_username FROM workflow_requests w LEFT JOIN users u ON w.user_id = u.id WHERE w.id = ?`, [newRequest.id]);
+        const [rows] = await db.query(`SELECT w.*, u.username as employee_id_username FROM workflow_requests w LEFT JOIN users u ON w.user_id = u.id WHERE w.id = ? `, [newRequest.id]);
         
         const row = rows[0];
         const requestForFrontend = {
@@ -161,6 +300,8 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
             lastModified: new Date(row.last_modified).toISOString(),
             stageHistory: safeJsonParse(row.stage_history, []),
             employeeId: row.employee_id_username,
+            blNumber: row.bl_number || null,
+            blDate: row.bl_date || null,
         };
         res.status(201).json(requestForFrontend);
 
@@ -187,7 +328,7 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
             for (const file of req.files) {
                  const nameParts = file.originalname.split('___');
                 if (nameParts.length !== 3) {
-                    console.warn(`Skipping file with invalid name format: ${file.originalname}`);
+                    console.warn(`Skipping file with invalid name format: ${ file.originalname } `);
                     continue;
                 }
                 const [docId, docType, originalName] = nameParts;
@@ -233,13 +374,21 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
         if (requestData.hasOwnProperty('departurePort')) {
             dbPayload.departure_port = requestData.departurePort || null;
         }
-
+        if (requestData.hasOwnProperty('blNumber')) {
+            dbPayload.bl_number = requestData.blNumber || null;
+        }
+        if (requestData.hasOwnProperty('blDate')) {
+            dbPayload.bl_date = requestData.blDate || null;
+        }
+        if (requestData.hasOwnProperty('title')) {
+            dbPayload.title = requestData.title;
+        }
 
         const [result] = await db.query('UPDATE workflow_requests SET ? WHERE id = ?', [dbPayload, id]);
 
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Workflow request not found.'});
         
-        const [rows] = await db.query(`SELECT w.*, u.username as employee_id_username FROM workflow_requests w LEFT JOIN users u ON w.user_id = u.id WHERE w.id = ?`, [id]);
+        const [rows] = await db.query(`SELECT w.*, u.username as employee_id_username FROM workflow_requests w LEFT JOIN users u ON w.user_id = u.id WHERE w.id = ? `, [id]);
         
         const row = rows[0];
         const updatedRequest = {
@@ -259,6 +408,8 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
             expectedDepartureDate: row.expected_departure_date,
             expectedArrivalDate: row.expected_arrival_date,
             departurePort: row.departure_port,
+            blNumber: row.bl_number || null,
+            blDate: row.bl_date || null,
         };
         res.json(updatedRequest);
 
