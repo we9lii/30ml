@@ -95,10 +95,6 @@ const safeJsonParse = (data, defaultValue) => {
 };
 
 
-
-
-
-
 // GET /api/workflow-requests
 router.get('/workflow-requests', async (req, res) => {
     try {
@@ -309,12 +305,9 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
             expectedArrivalDate: row.expected_arrival_date,
             departurePort: row.departure_port,
             blNumber: row.bl_number || null,
-<<<<<<< HEAD
             blDate: row.bl_date || null,
-=======
             invoiceNumber: row.invoice_number || null,
             goodsType: row.goods_type || null,
->>>>>>> 8c7e50ec577724e8eeb15bfc45a2742059186ee4
         };
         res.json(updatedRequest);
 
