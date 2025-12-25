@@ -112,30 +112,17 @@ router.get('/workflow-requests', async (req, res) => {
             type: req.type || 'استيراد',
             priority: req.priority || 'منخفضة',
             currentStageId: req.current_stage_id || 1,
-```javascript
-const express = require('express');
-const router = express.Router();
-const db = require('../db.js');
-const multer = require('multer');
-const { cloudinary } = require('../cloudinary.js');
-const streamifier = require('streamifier');
+            creationDate: req.creation_date ? new Date(req.creation_date).toISOString() : new Date().toISOString(),
+            lastModified: req.last_modified ? new Date(req.last_modified).toISOString() : new Date().toISOString(),
+            stageHistory: safeJsonParse(req.stage_history, []),
 
-// Setup multer for memory storage
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
-
-// Security Middleware to check for Import/Export permission
-const checkImportExportPermission = async (req, res, next) => {
-    try {
-        let employeeId;
-        
-        // Extract employeeId based on the request type (POST or PUT with multipart/form-data)
-        if (req.body.reportData) { // From a regular report update
-             const reportData = JSON.parse(req.body.reportData);
-             employeeId = reportData.employeeId;
+            // Extract employeeId based on the request type (POST or PUT with multipart/form-data)
+            if(req.body.reportData) { // From a regular report update
+            const reportData = JSON.parse(req.body.reportData);
+            employeeId = reportData.employeeId;
         } else if (req.body.requestData) { // From a workflow update
-             const requestData = JSON.parse(req.body.requestData);
-             employeeId = requestData.employeeId;
+            const requestData = JSON.parse(req.body.requestData);
+            employeeId = requestData.employeeId;
         } else { // From a workflow creation or DELETE
             employeeId = req.body.employeeId;
         }
@@ -151,7 +138,7 @@ const checkImportExportPermission = async (req, res, next) => {
         }
 
         const user = userRows[0];
-        
+
         // Allow access if the user is an Admin or has the specific permission
         if (user.role === 'admin' || user.has_import_export_permission) {
             next();
@@ -171,7 +158,7 @@ const uploadFileToCloudinary = (file, employeeId) => {
         const publicId = file.originalname.split('.').slice(0, -1).join('.').trim();
         const uploadStream = cloudinary.uploader.upload_stream(
             {
-                folder: `qssun_reports / workflows / ${ employeeId }`,
+                folder: `qssun_reports / workflows / ${employeeId}`,
                 public_id: publicId,
                 resource_type: 'auto'
             },
@@ -266,14 +253,14 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
                 if (parts.length === 2) {
                     const lastNum = parseInt(parts[1], 10);
                     if (!isNaN(lastNum)) {
-                        nextId = `Qssun - ${ String(lastNum + 1).padStart(4, '0')
-    }`;
+                        nextId = `Qssun - ${String(lastNum + 1).padStart(4, '0')
+                            }`;
                     }
                 }
             }
         } catch (idError) {
             console.error('Error generating new ID, falling back to timestamp:', idError);
-            nextId = `Qssun - ${ Date.now().toString().slice(-4) } `;
+            nextId = `Qssun - ${Date.now().toString().slice(-4)} `;
         }
 
         const newRequest = {
@@ -289,7 +276,7 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
         };
 
         await db.query('INSERT INTO workflow_requests SET ?', newRequest);
-        
+
         const [rows] = await db.query(`SELECT w.*, u.username as employee_id_username FROM workflow_requests w LEFT JOIN users u ON w.user_id = u.id WHERE w.id = ? `, [newRequest.id]);
         const row = rows[0];
         const requestForFrontend = {
@@ -304,12 +291,9 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
             stageHistory: safeJsonParse(row.stage_history, []),
             employeeId: row.employee_id_username,
             blNumber: row.bl_number || null,
-<<<<<<< HEAD
             blDate: row.bl_date || null,
-=======
             invoiceNumber: row.invoice_number || null,
             goodsType: row.goods_type || null,
->>>>>>> 8c7e50ec577724e8eeb15bfc45a2742059186ee4
         };
         res.status(201).json(requestForFrontend);
 
@@ -336,7 +320,7 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
             for (const file of req.files) {
                 const nameParts = file.originalname.split('___');
                 if (nameParts.length !== 3) {
-                    console.warn(`Skipping file with invalid name format: ${ file.originalname } `);
+                    console.warn(`Skipping file with invalid name format: ${file.originalname} `);
                     continue;
                 }
                 const [docId, docType, originalName] = nameParts;
@@ -400,8 +384,8 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
 
         const [result] = await db.query('UPDATE workflow_requests SET ? WHERE id = ?', [dbPayload, id]);
 
-        if (result.affectedRows === 0) return res.status(404).json({ message: 'Workflow request not found.'});
-        
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Workflow request not found.' });
+
         const [rows] = await db.query(`SELECT w.*, u.username as employee_id_username FROM workflow_requests w LEFT JOIN users u ON w.user_id = u.id WHERE w.id = ? `, [id]);
         const row = rows[0];
         const updatedRequest = {
