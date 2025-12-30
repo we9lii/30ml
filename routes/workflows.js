@@ -135,7 +135,12 @@ router.get('/workflow-requests', async (req, res) => {
 
 // POST /api/workflow-requests - Create a new request
 router.post('/workflow-requests', checkImportExportPermission, async (req, res) => {
-    const { title, description, type, priority, employeeId, stageHistory, blNumber, blDate, invoiceNumber, goodsType } = req.body;
+    const {
+        title, description, type, priority, employeeId, stageHistory,
+        blNumber, blDate, invoiceNumber, goodsType,
+        manufacturingDate, expectedDepartureDate, expectedArrivalDate,
+        containerCount20ft, containerCount40ft, departurePort
+    } = req.body;
     try {
         const [userRows] = await db.query('SELECT id FROM users WHERE username = ?', [employeeId]);
         if (userRows.length === 0) return res.status(404).json({ message: 'User not found.' });
@@ -152,8 +157,7 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
                 if (parts.length === 2) {
                     const lastNum = parseInt(parts[1], 10);
                     if (!isNaN(lastNum)) {
-                        nextId = `Qssun - ${String(lastNum + 1).padStart(4, '0')
-                            }`;
+                        nextId = `Qssun - ${String(lastNum + 1).padStart(4, '0')}`;
                     }
                 }
             }
@@ -162,11 +166,14 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
             nextId = `Qssun - ${Date.now().toString().slice(-4)} `;
         }
 
-        // Sanitize Date Fields
+        // Robust Date Sanitization
         const sanitizeDate = (dateVal) => {
             if (!dateVal) return null;
-            if (dateVal === 'null') return null;
-            if (dateVal === '') return null;
+            if (dateVal === 'null' || dateVal === '') return null;
+            // Provide a simple check: if it's not a valid date string (YYYY-MM-DD or ISO), return NULL.
+            // This prevents "Incorrect date value" SQL errors.
+            const d = new Date(dateVal);
+            if (isNaN(d.getTime())) return null;
             return dateVal;
         };
 
@@ -178,6 +185,12 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
             bl_date: sanitizeDate(blDate),
             invoice_number: invoiceNumber || null,
             goods_type: goodsType || null,
+            manufacturing_date: sanitizeDate(manufacturingDate),
+            expected_departure_date: sanitizeDate(expectedDepartureDate),
+            expected_arrival_date: sanitizeDate(expectedArrivalDate),
+            container_count_20ft: containerCount20ft || 0,
+            container_count_40ft: containerCount40ft || 0,
+            departure_port: departurePort || null,
             current_stage_id: 1,
             stage_history: JSON.stringify(stageHistory || []),
         };
