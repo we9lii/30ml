@@ -141,6 +141,16 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
         manufacturingDate, expectedDepartureDate, expectedArrivalDate,
         containerCount20ft, containerCount40ft, departurePort
     } = req.body;
+
+    // Robust Date Sanitization
+    const sanitizeDate = (dateVal) => {
+        if (!dateVal) return null;
+        if (dateVal === 'null' || dateVal === '') return null;
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return null;
+        return dateVal;
+    };
+
     try {
         const [userRows] = await db.query('SELECT id FROM users WHERE username = ?', [employeeId]);
         if (userRows.length === 0) return res.status(404).json({ message: 'User not found.' });
