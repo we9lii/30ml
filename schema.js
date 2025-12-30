@@ -257,6 +257,24 @@ async function ensureSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
     console.log(' Ensured table calendar_events exists');
+
+    // 12) Ensure workflow_requests table columns exist (Backfill for new fields)
+    try {
+      const ensureWorkflowColumn = async (name, type) => {
+        const [col] = await db.query(`SHOW COLUMNS FROM workflow_requests LIKE '${name}'`);
+        if (!col || col.length === 0) {
+          await db.query(`ALTER TABLE workflow_requests ADD COLUMN ${name} ${type}`);
+          console.log(` Added column workflow_requests.${name}`);
+        }
+      };
+      await ensureWorkflowColumn('bl_number', "VARCHAR(64) NULL");
+      await ensureWorkflowColumn('bl_date', "DATE NULL");
+      await ensureWorkflowColumn('invoice_number', "VARCHAR(64) NULL");
+      await ensureWorkflowColumn('goods_type', "VARCHAR(128) NULL");
+
+    } catch (e) {
+      console.log(' Skipping workflow_requests column check due to error:', e.message);
+    }
   } catch (err) {
     console.error(' Schema check/add failed:', err.message);
   }
