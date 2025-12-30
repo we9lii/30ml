@@ -123,7 +123,10 @@ router.get('/workflow-requests', async (req, res) => {
             departurePort: req.departure_port,
             blNumber: req.bl_number || null,
             blDate: req.bl_date || null,
-            invoiceNumber: req.invoice_number || null,
+            blDate: req.bl_date || null,
+            invoiceNumber: req.invoice_number || null, // Legacy
+            ciNumber: req.invoice_number || null,      // Frontend Standard
+            goodsType: req.goods_type || null,
             goodsType: req.goods_type || null,
         }));
         res.json(requests);
@@ -137,7 +140,7 @@ router.get('/workflow-requests', async (req, res) => {
 router.post('/workflow-requests', checkImportExportPermission, async (req, res) => {
     const {
         title, description, type, priority, employeeId, stageHistory,
-        blNumber, blDate, invoiceNumber, goodsType,
+        blNumber, blDate, invoiceNumber, ciNumber, goodsType,
         manufacturingDate, expectedDepartureDate, expectedArrivalDate,
         containerCount20ft, containerCount40ft, departurePort
     } = req.body;
@@ -193,7 +196,7 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
                 title, description, type, priority,
                 bl_number: blNumber || null,
                 bl_date: sanitizeDate(blDate),
-                invoice_number: invoiceNumber || null,
+                invoice_number: ciNumber || invoiceNumber || null, // Prioritize ciNumber
                 goods_type: goodsType || null,
                 manufacturing_date: sanitizeDate(manufacturingDate),
                 expected_departure_date: sanitizeDate(expectedDepartureDate),
@@ -238,7 +241,8 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
             employeeId: row.employee_id_username,
             blNumber: row.bl_number || null,
             blDate: row.bl_date || null,
-            invoiceNumber: row.invoice_number || null,
+            invoiceNumber: row.invoice_number || null, // Legacy support
+            ciNumber: row.invoice_number || null,     // Frontend standard
             goodsType: row.goods_type || null,
         };
         res.status(201).json(requestForFrontend);
@@ -324,6 +328,10 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
         if (requestData.hasOwnProperty('invoiceNumber')) {
             dbPayload.invoice_number = requestData.invoiceNumber || null;
         }
+        // Support ciNumber
+        if (requestData.hasOwnProperty('ciNumber')) {
+            dbPayload.invoice_number = requestData.ciNumber || null;
+        }
         if (requestData.hasOwnProperty('goodsType')) {
             dbPayload.goods_type = requestData.goodsType || null;
         }
@@ -353,7 +361,8 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
             departurePort: row.departure_port,
             blNumber: row.bl_number || null,
             blDate: row.bl_date || null,
-            invoiceNumber: row.invoice_number || null,
+            invoiceNumber: row.invoice_number || null, // Legacy support
+            ciNumber: row.invoice_number || null,     // Frontend standard
             goodsType: row.goods_type || null,
         };
         res.json(updatedRequest);
