@@ -162,16 +162,24 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
             nextId = `Qssun - ${Date.now().toString().slice(-4)} `;
         }
 
+        // Sanitize Date Fields
+        const sanitizeDate = (dateVal) => {
+            if (!dateVal) return null;
+            if (dateVal === 'null') return null;
+            if (dateVal === '') return null;
+            return dateVal;
+        };
+
         const newRequest = {
             id: nextId,
             user_id: userId,
             title, description, type, priority,
             bl_number: blNumber || null,
-            bl_date: blDate || null,
+            bl_date: sanitizeDate(blDate),
             invoice_number: invoiceNumber || null,
             goods_type: goodsType || null,
             current_stage_id: 1,
-            stage_history: JSON.stringify(stageHistory),
+            stage_history: JSON.stringify(stageHistory || []),
         };
 
         await db.query('INSERT INTO workflow_requests SET ?', newRequest);

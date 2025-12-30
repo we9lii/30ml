@@ -271,6 +271,7 @@ async function ensureSchema() {
       await ensureWorkflowColumn('bl_date', "DATE NULL");
       await ensureWorkflowColumn('invoice_number', "VARCHAR(64) NULL");
       await ensureWorkflowColumn('goods_type', "VARCHAR(128) NULL");
+      await ensureWorkflowColumn('stage_history', "TEXT NULL");
 
     } catch (e) {
       console.log(' Skipping workflow_requests column check due to error:', e.message);
