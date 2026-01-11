@@ -165,6 +165,40 @@ async function ensureSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
     console.log(' Ensured table instant_expense_lines exists');
+
+    // 9.b) Ensure instant_expense_lines has new columns for Custody System
+    try {
+      const ensureLineCol = async (name, type) => {
+        const [col] = await db.query(`SHOW COLUMNS FROM instant_expense_lines LIKE '${name}'`);
+        if (!col || col.length === 0) {
+          await db.query(`ALTER TABLE instant_expense_lines ADD COLUMN ${name} ${type}`);
+          console.log(` Added column instant_expense_lines.${name}`);
+        }
+      };
+      await ensureLineCol('tax_number', "VARCHAR(32) NULL");
+      await ensureLineCol('category', "VARCHAR(64) NULL");
+      // 'beneficiary' is 'company' in existing table, 'buyer' is 'buyer_name'
+    } catch (e) {
+      console.log(' Skipping instant_expense_lines column check due to error:', e.message);
+    }
+
+    // 9.c) Create View for Real-time Monitoring
+    await db.query(`
+      CREATE OR REPLACE VIEW view_custody_monitoring AS
+      SELECT 
+          s.id,
+          s.custody_number,
+          s.custody_amount,
+          COALESCE(SUM(l.amount + COALESCE(l.bank_fees, 0)), 0) AS total_spent,
+          (s.custody_amount - COALESCE(SUM(l.amount + COALESCE(l.bank_fees, 0)), 0)) AS remaining_balance,
+          ROUND((COALESCE(SUM(l.amount + COALESCE(l.bank_fees, 0)), 0) / NULLIF(s.custody_amount, 0)) * 100, 2) AS consumption_percentage,
+          s.user_id,
+          s.status
+      FROM instant_expense_sheets s
+      LEFT JOIN instant_expense_lines l ON l.sheet_id = s.id
+      GROUP BY s.id;
+    `);
+    console.log(' Ensured view view_custody_monitoring exists');
     // Ensure quotations table columns exist if table already present
     try {
       const [locCol] = await db.query("SHOW COLUMNS FROM quotations LIKE 'location'");
