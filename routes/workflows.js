@@ -206,6 +206,8 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
                 departure_port: departurePort || null,
                 current_stage_id: 1,
                 stage_history: JSON.stringify(stageHistory || []),
+                creation_date: new Date(),
+                last_modified: new Date(),
             };
 
             try {
@@ -249,7 +251,7 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
 
     } catch (error) {
         console.error('Error creating workflow request:', error);
-        res.status(500).json({ message: 'An internal server error occurred.' });
+        res.status(500).json({ message: 'An internal server error occurred.', error: error.message });
     }
 });
 
