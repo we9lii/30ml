@@ -160,73 +160,60 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
 
         const userId = userRows[0].id;
 
-        // Robust ID Generation & Retry Loop
-        let attempts = 0;
+        // Sequential ID Generation
+        let nextId;
         let savedRequest = null;
-        const maxAttempts = 5;
-        let currentIdNum = 1;
 
-        // Initial DB fetch to find the baseline
         try {
-            const [rows] = await db.query("SELECT id FROM workflow_requests WHERE id LIKE 'Qssun-%' ORDER BY id DESC LIMIT 1");
+            // Fetch all existing IDs to find the true maximum reliably
+            const [rows] = await db.query("SELECT id FROM workflow_requests WHERE id LIKE 'Qssun - %'");
+
+            let maxNum = 0;
             if (rows.length > 0) {
-                const lastId = rows[0].id;
-                const parts = lastId.split('-'); // Split by hyphen
-                if (parts.length >= 2) {
-                    // Handle both "Qssun-0001" and "Qssun - 0001"
-                    const lastNumStr = parts[parts.length - 1].trim();
-                    const lastNum = parseInt(lastNumStr, 10);
-                    if (!isNaN(lastNum)) {
-                        currentIdNum = lastNum + 1;
+                rows.forEach(row => {
+                    const parts = row.id.split('-');
+                    if (parts.length >= 2) {
+                        const numStr = parts[parts.length - 1].trim();
+                        const num = parseInt(numStr, 10);
+                        if (!isNaN(num) && num > maxNum) {
+                            maxNum = num;
+                        }
                     }
-                }
+                });
             }
+
+            const nextNum = maxNum + 1;
+            // Pad to 4 digits to match existing pattern (e.g. 0019)
+            nextId = `Qssun - ${String(nextNum).padStart(4, '0')}`;
+
         } catch (idError) {
-            console.error('Error fetching initial ID:', idError);
-            // Fallback: start at 1 or use timestamp if desperate, but let's try 1
+            console.error('Error generating sequential ID:', idError);
+            // Fallback to timestamp if extremely desperate
+            nextId = `Qssun - ${Date.now()}`;
         }
 
-        while (attempts < maxAttempts) {
-            attempts++;
-            const nextId = `Qssun - ${String(currentIdNum).padStart(4, '0')}`;
+        const newRequest = {
+            id: nextId,
+            user_id: userId,
+            title, description, type, priority,
+            bl_number: blNumber || null,
+            bl_date: sanitizeDate(blDate),
+            invoice_number: ciNumber || invoiceNumber || null, // Prioritize ciNumber
+            goods_type: goodsType || null,
+            manufacturing_date: sanitizeDate(manufacturingDate),
+            expected_departure_date: sanitizeDate(expectedDepartureDate),
+            expected_arrival_date: sanitizeDate(expectedArrivalDate),
+            container_count_20ft: containerCount20ft || 0,
+            container_count_40ft: containerCount40ft || 0,
+            departure_port: departurePort || null,
+            current_stage_id: 1,
+            stage_history: JSON.stringify(stageHistory || []),
+            creation_date: new Date(),
+            last_modified: new Date(),
+        };
 
-            const newRequest = {
-                id: nextId,
-                user_id: userId,
-                title, description, type, priority,
-                bl_number: blNumber || null,
-                bl_date: sanitizeDate(blDate),
-                invoice_number: ciNumber || invoiceNumber || null, // Prioritize ciNumber
-                goods_type: goodsType || null,
-                manufacturing_date: sanitizeDate(manufacturingDate),
-                expected_departure_date: sanitizeDate(expectedDepartureDate),
-                expected_arrival_date: sanitizeDate(expectedArrivalDate),
-                container_count_20ft: containerCount20ft || 0,
-                container_count_40ft: containerCount40ft || 0,
-                departure_port: departurePort || null,
-                current_stage_id: 1,
-                stage_history: JSON.stringify(stageHistory || []),
-                creation_date: new Date(),
-                last_modified: new Date(),
-            };
-
-            try {
-                await db.query('INSERT INTO workflow_requests SET ?', newRequest);
-                savedRequest = newRequest; // Success!
-                break; // Exit loop
-            } catch (err) {
-                if (err.code === 'ER_DUP_ENTRY') {
-                    console.warn(`ID Collision for ${nextId}, retrying... (Attempt ${attempts})`);
-                    currentIdNum++; // Increment and try again
-                } else {
-                    throw err; // Other errors should bubble up
-                }
-            }
-        }
-
-        if (!savedRequest) {
-            throw new Error('Failed to generate a unique ID after multiple attempts.');
-        }
+        await db.query('INSERT INTO workflow_requests SET ?', newRequest);
+        savedRequest = newRequest;
 
         const [rows] = await db.query(`SELECT w.*, u.username as employee_id_username FROM workflow_requests w LEFT JOIN users u ON w.user_id = u.id WHERE w.id = ? `, [savedRequest.id]);
         const row = rows[0];
