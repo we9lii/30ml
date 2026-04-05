@@ -127,7 +127,7 @@ router.get('/workflow-requests', async (req, res) => {
             invoiceNumber: req.invoice_number || null, // Legacy
             ciNumber: req.invoice_number || null,      // Frontend Standard
             goodsType: req.goods_type || null,
-            goodsType: req.goods_type || null,
+            supplierInfo: req.supplier_name ? { name: req.supplier_name, contact: '' } : undefined,
         }));
         res.json(requests);
     } catch (error) {
@@ -142,7 +142,7 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
         title, description, type, priority, employeeId, stageHistory,
         blNumber, blDate, invoiceNumber, ciNumber, goodsType,
         manufacturingDate, expectedDepartureDate, expectedArrivalDate,
-        containerCount20ft, containerCount40ft, departurePort
+        containerCount20ft, containerCount40ft, departurePort, supplierInfo
     } = req.body;
 
     // Robust Date Sanitization
@@ -206,6 +206,7 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
             container_count_20ft: containerCount20ft || 0,
             container_count_40ft: containerCount40ft || 0,
             departure_port: departurePort || null,
+            supplier_name: (supplierInfo && supplierInfo.name) ? supplierInfo.name : null,
             current_stage_id: 1,
             stage_history: JSON.stringify(stageHistory || []),
             creation_date: new Date(),
@@ -233,6 +234,7 @@ router.post('/workflow-requests', checkImportExportPermission, async (req, res) 
             invoiceNumber: row.invoice_number || null, // Legacy support
             ciNumber: row.invoice_number || null,     // Frontend standard
             goodsType: row.goods_type || null,
+            supplierInfo: row.supplier_name ? { name: row.supplier_name, contact: '' } : undefined,
         };
         res.status(201).json(requestForFrontend);
 
@@ -324,6 +326,9 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
         if (requestData.hasOwnProperty('goodsType')) {
             dbPayload.goods_type = requestData.goodsType || null;
         }
+        if (requestData.hasOwnProperty('supplierInfo')) {
+            dbPayload.supplier_name = (requestData.supplierInfo && requestData.supplierInfo.name) ? requestData.supplierInfo.name : null;
+        }
 
         const [result] = await db.query('UPDATE workflow_requests SET ? WHERE id = ?', [dbPayload, id]);
 
@@ -353,6 +358,7 @@ router.put('/workflow-requests/:id', upload.any(), checkImportExportPermission, 
             invoiceNumber: row.invoice_number || null, // Legacy support
             ciNumber: row.invoice_number || null,     // Frontend standard
             goodsType: row.goods_type || null,
+            supplierInfo: row.supplier_name ? { name: row.supplier_name, contact: '' } : undefined,
         };
         res.json(updatedRequest);
 
